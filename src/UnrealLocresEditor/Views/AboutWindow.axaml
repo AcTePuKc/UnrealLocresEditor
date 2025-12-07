@@ -43,7 +43,7 @@
                    HorizontalAlignment="Center"/>
 
 		<StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-			<Button Content="Update check"
+			<Button Content="Update Check"
                 HorizontalAlignment="Center"
                 Click="OnCheckForUpdatesClick"
 				Margin="0,20,10,0"/>

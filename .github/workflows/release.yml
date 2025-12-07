@@ -1,0 +1,66 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build ${{ matrix.runtime }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Windows x64
+          - os: windows-latest
+            os-name: Windows
+            runtime: win-x64
+          # Windows x86 (ADDED THIS)
+          - os: windows-latest
+            os-name: Windows
+            runtime: win-x86
+          # Linux x64
+          - os: ubuntu-latest
+            os-name: Linux
+            runtime: linux-x64
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Publish
+        run: |
+          dotnet publish src/UnrealLocresEditor.Desktop/UnrealLocresEditor.Desktop.csproj -c Release -r ${{ matrix.runtime }} -o ./publish /p:PublishSingleFile=true /p:SelfContained=true /p:PublishTrimmed=true
+
+      # CREATE VERSION.TXT (Inside the zip)
+      - name: Create version.txt
+        shell: bash
+        run: echo "${{ github.ref_name }}" > ./publish/version.txt
+
+      # ZIP IT UP (Naming it LocresStudio)
+      - name: Create Archive
+        shell: bash
+        run: |
+          cd publish
+          if [ "${{ matrix.os-name }}" == "Windows" ]; then
+            powershell Compress-Archive -Path * -DestinationPath ../LocresStudio-${{ github.ref_name }}-${{ matrix.runtime }}.zip
+          else
+            zip -r ../LocresStudio-${{ github.ref_name }}-${{ matrix.runtime }}.zip .
+          fi
+
+      # UPLOAD TO GITHUB RELEASES
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: LocresStudio-*-${{ matrix.runtime }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -9,6 +9,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.Styling;
 using CsvHelper;
 using CsvHelper.Configuration;
 using System;
@@ -46,7 +47,7 @@ namespace UnrealLocresEditor.Views
 
         // Settings
         private AppConfig _appConfig;
-        private DiscordRPC _discordRPC;
+        private DiscordService _discordRPC;
         public bool UseWine;
 
         // Misc
@@ -69,6 +70,9 @@ namespace UnrealLocresEditor.Views
                     _selectedDocument = value;
                     RaisePropertyChanged(nameof(SelectedDocument));
                     ApplySelectedDocumentState();
+
+                    // NEW: Update Discord immediately when clicking a tab
+                    _discordRPC.UpdatePresence(_selectedDocument);
                 }
             }
         }
@@ -80,16 +84,17 @@ namespace UnrealLocresEditor.Views
 
         public MainWindow()
         {
-            _appConfig = AppConfig.Load();
+            _appConfig = AppConfig.Instance;
             InitializeComponent();
+
+            _dataGrid = this.FindControl<DataGrid>("uiDataGrid");
+
+            ApplyEditorSettings();
+
             _dataGrid.CellEditEnded += DataGrid_CellEditEnded;
-
+            _dataGrid.BeginningEdit += DataGrid_BeginningEdit;
             UseWine = _appConfig.UseWine;
-            _discordRPC = new DiscordRPC();
-
-            // Set theme and accent
-            ApplyTheme(_appConfig.IsDarkTheme);
-            ApplyAccent(Color.Parse(_appConfig.AccentColor));
+            _discordRPC = new DiscordService();
 
             // NEW: Clean up old junk from previous crashes
             CleanupStaleTempDirectories();
@@ -107,12 +112,62 @@ namespace UnrealLocresEditor.Views
             Documents.CollectionChanged += Documents_CollectionChanged;
             ConfigureAutoSaveTimer();
 
-            _discordRPC.idleStartTime = DateTime.UtcNow;
 
             // For preventing shutdown if the work is unsaved
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 AppDomain.CurrentDomain.ProcessExit += OnSystemShutdown;
+            }
+        }
+        private void DataGrid_BeginningEdit(object? sender, DataGridBeginningEditEventArgs e)
+        {
+            // 1. Get the data row being edited
+            if (e.Row.DataContext is DataRow row)
+            {
+                // 2. Determine which column index (0, 1, or 2) is being edited
+                // Note: This assumes your columns are in order: Key | Source | Target
+                int columnIndex = e.Column.DisplayIndex;
+
+                // 3. Save the OLD value safely
+                if (row.Values != null && columnIndex >= 0 && columnIndex < row.Values.Length)
+                {
+                    _cellValueBeforeEdit = row.Values[columnIndex] ?? string.Empty;
+                }
+            }
+        }
+        public void ApplyEditorSettings()
+        {
+            // Reload config to get latest changes
+            var _appConfig = AppConfig.Instance;
+
+            if (_appConfig == null) return;
+
+            // The _dataGrid field should reference your uiDataGrid control.
+            if (_dataGrid != null)
+            {
+                if (!string.IsNullOrEmpty(_appConfig.EditorFontFamily))
+                    // 1. Apply Font Family
+                    try
+                {
+                        _dataGrid.FontFamily = new Avalonia.Media.FontFamily(_appConfig.EditorFontFamily);
+                    }
+                catch
+                {
+                        // Fallback to default if the font name is wrong or not installed
+                        _dataGrid.FontFamily = Avalonia.Media.FontFamily.Default;
+                    }
+
+                // 2. Apply Font Size
+                _dataGrid.FontSize = _appConfig.EditorFontSize;
+
+                // 3. Apply RTL (Right-to-Left) direction
+                // This affects column arrangement (Target | Source | Key) and text alignment.
+                _dataGrid.FlowDirection = _appConfig.EnableRTL
+                    ? FlowDirection.RightToLeft
+                    : FlowDirection.LeftToRight;
+
+                // Optional: Force a redraw (good practice)
+                _dataGrid.InvalidateVisual();
             }
         }
 
@@ -177,7 +232,7 @@ namespace UnrealLocresEditor.Views
                 var currentInstanceId = Process.GetCurrentProcess().Id.ToString();
 
                 // Find all folders that look like ".temp-UnrealLocresEditor-XXXX"
-                var directories = Directory.GetDirectories(exeDirectory, ".temp-UnrealLocresEditor-*");
+                var directories = Directory.GetDirectories(exeDirectory, ".temp-LocresStudio-*");
 
                 foreach (var dir in directories)
                 {
@@ -218,6 +273,8 @@ namespace UnrealLocresEditor.Views
                 : csvFile;
             _selectedDocument.HasUnsavedChanges = _hasUnsavedChanges;
         }
+
+        private string _cellValueBeforeEdit = string.Empty;
 
         private void ApplySelectedDocumentState()
         {
@@ -301,14 +358,30 @@ namespace UnrealLocresEditor.Views
 
         private void UpdateDiscordPresence(string? path)
         {
-            _discordRPC.UpdatePresence(_appConfig.DiscordRPCEnabled, path);
+            _discordRPC.UpdatePresence(SelectedDocument);
         }
 
-        private void DataGrid_CellEditEnded(object sender, DataGridCellEditEndedEventArgs e)
+        private void DataGrid_CellEditEnded(object? sender, DataGridCellEditEndedEventArgs e)
         {
-            if (SelectedDocument != null)
+            // 1. Check if user cancelled with Escape (we shouldn't save then)
+            if (e.EditAction == DataGridEditAction.Cancel) return;
+
+            if (SelectedDocument != null && e.Row.DataContext is DataRow row)
             {
-                MarkDocumentDirty(SelectedDocument);
+                int columnIndex = e.Column.DisplayIndex;
+
+                // 2. Get the NEW value
+                if (row.Values != null && columnIndex >= 0 && columnIndex < row.Values.Length)
+                {
+                    string newValue = row.Values[columnIndex] ?? string.Empty;
+
+                    // 3. COMPARE: Old vs New
+                    if (!string.Equals(_cellValueBeforeEdit, newValue, StringComparison.Ordinal))
+                    {
+                        // It changed! NOW we call your existing method.
+                        MarkDocumentDirty(SelectedDocument);
+                    }
+                }
             }
         }
         private void SaveDocument(LocresDocument document, bool openExplorer, bool isAutoSave)
@@ -345,6 +418,14 @@ namespace UnrealLocresEditor.Views
 
         private void AutoSave_Elapsed(object sender, ElapsedEventArgs e)
         {
+            if (!_appConfig.AutoSaveEnabled)
+            {
+                if (_autoSaveTimer != null)
+                {
+                    _autoSaveTimer.Stop();
+                }
+                return;
+            }
             var documentsToSave = _documents
                 .Where(
                     d =>
@@ -388,32 +469,6 @@ namespace UnrealLocresEditor.Views
             });
         }
 
-        // Apply theme based off of config
-        private void ApplyTheme(bool isDarkTheme)
-        {
-            Application.Current.RequestedThemeVariant = isDarkTheme
-                ? Avalonia.Styling.ThemeVariant.Dark
-                : Avalonia.Styling.ThemeVariant.Light;
-        }
-
-        // Apply accent based off of config
-        // https://github.com/AvaloniaUI/Avalonia/issues/10746
-        private void ApplyAccent(Color accentColor)
-        {
-            Application.Current!.Resources["SystemAccentColor"] = accentColor;
-            Application.Current.Resources["SystemAccentColorDark1"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, -0.3);
-            Application.Current.Resources["SystemAccentColorDark2"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, -0.5);
-            Application.Current.Resources["SystemAccentColorDark3"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, -0.7);
-            Application.Current.Resources["SystemAccentColorLight1"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, 0.3);
-            Application.Current.Resources["SystemAccentColorLight2"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, 0.5);
-            Application.Current.Resources["SystemAccentColorLight3"] =
-                ColorUtils.ChangeColorLuminosity(accentColor, 0.7);
-        }
 
         private async void OnWindowLoaded(object sender, RoutedEventArgs e)
         {
@@ -458,7 +513,8 @@ namespace UnrealLocresEditor.Views
             }
 #endif
 
-            _discordRPC.Initialize(_currentLocresFilePath);
+            _discordRPC.Initialize();
+
         }
 
         // Ask if user wants to save when window closes + has unsaved changes
@@ -571,15 +627,14 @@ namespace UnrealLocresEditor.Views
         {
             _autoSaveTimer?.Stop();
             _autoSaveTimer?.Dispose();
-            _discordRPC.client?.ClearPresence();
-            _discordRPC.client?.Dispose();
+            _discordRPC.Dispose();
 
             // Clean up the temp directory for this instance
             try
             {
                 var instanceId = Process.GetCurrentProcess().Id.ToString();
                 var exeDirectory = Path.GetDirectoryName(Environment.ProcessPath);
-                var tempDirectoryName = $".temp-UnrealLocresEditor-{instanceId}";
+                var tempDirectoryName = $".temp-LocresStudio-{instanceId}";
                 var tempDirectoryPath = Path.Combine(exeDirectory, tempDirectoryName);
 
                 if (Directory.Exists(tempDirectoryPath))
@@ -713,101 +768,93 @@ namespace UnrealLocresEditor.Views
                 // CASE A: Editing a specific text box? Let default copy/paste happen.
                 if (focusedControl != null)
                 {
-                    return; // Don't handle it, let the TextBox handle it
+                    return; // Don't handle it, let the TextBox handle the operation
                 }
 
-                // CASE B: Not editing? Handle Grid row copying.
+                // CASE B: Not editing? Handle Grid row copying or cell pasting.
+
+                // 1. Copy  (Ctrl+C): Copy selected rows
                 if (e.Key == Key.C)
                 {
-                    // NEW: Check if we have rows selected
                     var selectedItems = _dataGrid.SelectedItems;
                     if (selectedItems != null && selectedItems.Count > 0)
                     {
                         var sb = new StringBuilder();
                         foreach (DataRow row in selectedItems)
                         {
-                            // Convert row to tab-separated string
-                            // This pastes perfectly into Excel/Google Sheets
+                            // Convert row to tab-separated string for easy paste into spreadsheets
                             sb.AppendLine(string.Join("\t", row.Values));
                         }
 
                         await this.Clipboard.SetTextAsync(sb.ToString());
                         e.Handled = true; // Stop Avalonia from trying to copy just one cell
                     }
+                    // If no rows are selected but a cell is selected, copy only that cell.
+                    else if (_dataGrid.SelectedItem is DataRow selectedRow && _dataGrid.CurrentColumn != null)
+                    {
+                        int selectedColumnIndex = _dataGrid.Columns.IndexOf(_dataGrid.CurrentColumn);
+                        if (selectedColumnIndex >= 0)
+                        {
+                            // Copy cell content from the underlying data.
+                            string cellValue = selectedRow.Values[selectedColumnIndex];
+                            await this.Clipboard.SetTextAsync(cellValue);
+                            e.Handled = true;
+                        }
+                    }
                 }
+
+                // 2. Paste (Ctrl+V): Pasting in selected cell
                 else if (e.Key == Key.V)
                 {
-                    var clipboardText = await this.Clipboard.GetTextAsync();
-                    if (!string.IsNullOrEmpty(clipboardText))
+                    if (_dataGrid.SelectedItem is DataRow selectedRow)
                     {
-                        int caretIndex = focusedControl.CaretIndex;
-                        focusedControl.Text = focusedControl.Text.Insert(
-                            caretIndex,
-                            clipboardText
+                        int selectedColumnIndex = _dataGrid.Columns.IndexOf(_dataGrid.CurrentColumn);
+                        if (selectedColumnIndex < 0)
+                            return;
+
+                        // Begin editing if not already editing.
+                        _dataGrid.BeginEdit();
+
+                        // Defer the paste operation until the editing control (TextBox) is available.
+                        Dispatcher.UIThread.Post(
+                            async () =>
+                            {
+                                var editTextBox = FocusManager.GetFocusedElement() as TextBox;
+                                if (editTextBox != null)
+                                {
+                                    var clipboardText = await this.Clipboard.GetTextAsync();
+                                    if (!string.IsNullOrEmpty(clipboardText))
+                                    {
+                                        // If user has selected text, replace that
+                                        if (!string.IsNullOrEmpty(editTextBox.SelectedText))
+                                        {
+                                            int selectionStart = editTextBox.SelectionStart;
+                                            editTextBox.Text = editTextBox
+                                                .Text.Remove(
+                                                    selectionStart,
+                                                    editTextBox.SelectionEnd - selectionStart
+                                                )
+                                                .Insert(selectionStart, clipboardText);
+                                            editTextBox.CaretIndex =
+                                                selectionStart + clipboardText.Length;
+                                        }
+                                        // Otherwise, replace entire cell
+                                        else
+                                        {
+                                            editTextBox.Text = clipboardText;
+                                            editTextBox.CaretIndex = clipboardText.Length;
+                                        }
+                                    }
+                                }
+                            },
+                            DispatcherPriority.Background
                         );
-                        focusedControl.CaretIndex = caretIndex + clipboardText.Length;
+
                         e.Handled = true;
                     }
                 }
             }
-            else if (_dataGrid.SelectedItem is DataRow selectedRow)
-            {
-                int selectedColumnIndex = _dataGrid.Columns.IndexOf(_dataGrid.CurrentColumn);
-                if (selectedColumnIndex < 0)
-                    return;
-
-                if (e.Key == Key.C)
-                {
-                    // Copy cell content from the underlying data.
-                    string cellValue = selectedRow.Values[selectedColumnIndex];
-                    await this.Clipboard.SetTextAsync(cellValue);
-                    e.Handled = true;
-                }
-                else if (e.Key == Key.V)
-                {
-                    // Begin editing if not already editing.
-                    _dataGrid.BeginEdit();
-
-                    // Defer the paste operation until the editing control (TextBox) is available.
-                    Dispatcher.UIThread.Post(
-                        async () =>
-                        {
-                            var editTextBox = FocusManager.GetFocusedElement() as TextBox;
-                            if (editTextBox != null)
-                            {
-                                var clipboardText = await this.Clipboard.GetTextAsync();
-                                if (!string.IsNullOrEmpty(clipboardText))
-                                {
-                                    // If user has selected text, replace that
-                                    if (!string.IsNullOrEmpty(editTextBox.SelectedText))
-                                    {
-                                        int selectionStart = editTextBox.SelectionStart;
-                                        editTextBox.Text = editTextBox
-                                            .Text.Remove(
-                                                selectionStart,
-                                                editTextBox.SelectionEnd - selectionStart
-                                            )
-                                            .Insert(selectionStart, clipboardText);
-                                        editTextBox.CaretIndex =
-                                            selectionStart + clipboardText.Length;
-                                    }
-                                    // Otherwise, replace entire cell
-                                    else
-                                    {
-                                        editTextBox.Text = clipboardText;
-                                        editTextBox.CaretIndex = clipboardText.Length;
-                                    }
-                                }
-                            }
-                        },
-                        DispatcherPriority.Background
-                    );
-
-                    e.Handled = true;
-                }
-            }
         }
-
 
         private void ShowFindDialog()
         {
@@ -986,7 +1033,7 @@ namespace UnrealLocresEditor.Views
             var exeDirectory = AppContext.BaseDirectory;
             // Create a unique instance ID so that if multiple instances are open, they don't overwrite eachother.
             var instanceId = Process.GetCurrentProcess().Id.ToString();
-            var tempDirectoryName = $".temp-UnrealLocresEditor-{instanceId}";
+            var tempDirectoryName = $".temp-LocresStudio-{instanceId}";
             var tempDirectoryPath = Path.Combine(exeDirectory, tempDirectoryName);
 
             // Create folder if it does not exist
@@ -1045,13 +1092,15 @@ namespace UnrealLocresEditor.Views
                 string originalFilePath = result[0].Path.LocalPath;
 
                 // Update Discord RPC
-                _discordRPC.editStartTime = DateTime.UtcNow;
-                _discordRPC.idleStartTime = null;
-                _discordRPC.UpdatePresence(_appConfig.DiscordRPCEnabled, originalFilePath);
+                _discordRPC.UpdatePresence(null);
 
                 // 2. Prepare unique CSV filename
                 var instanceId = Process.GetCurrentProcess().Id;
-                var csvFileName = $"{Path.GetFileNameWithoutExtension(originalFilePath)}_{instanceId}.csv";
+
+                // FIX: Add a short Random ID so "101.locres" doesn't clash with another "101.locres"
+                var uniqueId = Guid.NewGuid().ToString("N").Substring(0, 6);
+
+                var csvFileName = $"{Path.GetFileNameWithoutExtension(originalFilePath)}_{instanceId}_{uniqueId}.csv";
                 csvFile = Path.Combine(Directory.GetCurrentDirectory(), csvFileName);
 
                 // Safety: Delete any old CSV with this name
@@ -1110,7 +1159,9 @@ namespace UnrealLocresEditor.Views
                         // This ensures every opened file has a unique path in the temp folder,
                         // preventing tabs from overwriting each other.
                         var importedLocresDir = GetOrCreateTempDirectory();
-                        var uniqueLocresFileName = $"{Path.GetFileNameWithoutExtension(originalFilePath)}_{instanceId}{Path.GetExtension(originalFilePath)}";
+
+                        // Add the uniqueId here too!
+                        var uniqueLocresFileName = $"{Path.GetFileNameWithoutExtension(originalFilePath)}_{instanceId}_{uniqueId}{Path.GetExtension(originalFilePath)}";
                         var importedLocresPath = Path.Combine(importedLocresDir, uniqueLocresFileName);
 
                         File.Copy(originalFilePath, importedLocresPath, true);
@@ -1156,7 +1207,6 @@ namespace UnrealLocresEditor.Views
         }
 
         // Change signature to accept locresPath
-        // Change signature to accept locresPath
         private void LoadCsv(string csvFilePath, string locresPath, string originalUserPath = null)
         {
             try
@@ -1195,13 +1245,11 @@ namespace UnrealLocresEditor.Views
 
                 if (doc == null)
                 {
-                    // FIX: Initialize with the "Pretty" path (originalUserPath) if we have it.
-                    // This sets the 'OriginalPath' property in the model, which DisplayName uses.
+
                     string pathForDisplay = !string.IsNullOrEmpty(originalUserPath) ? originalUserPath : locresPath;
 
                     doc = new LocresDocument(pathForDisplay);
 
-                    // CRITICAL: Ensure WorkingPath points to the actual temp file we are editing
                     doc.WorkingPath = locresPath;
 
                     _documents.Add(doc);
@@ -1634,10 +1682,8 @@ namespace UnrealLocresEditor.Views
                 LoadCsv(filePath, _currentLocresFilePath);
 
                 csvFile = filePath;
-                _discordRPC.editStartTime = DateTime.UtcNow;
-                _discordRPC.idleStartTime = null;
 
-                _discordRPC.UpdatePresence(_appConfig.DiscordRPCEnabled, _currentLocresFilePath);
+                _discordRPC.UpdatePresence(null);
             }
         }
 
@@ -2240,6 +2286,17 @@ namespace UnrealLocresEditor.Views
 
         private void PreferencesWindow_Closed(object sender, EventArgs e)
         {
+            // 1. Apply font settings (Local to MainWindow)
+            ApplyEditorSettings();
+
+            // 2. Ensure Theme is correct (Global via App.axaml.cs)
+            // We cast Application.Current to your "App" class to access SetTheme
+            if (Application.Current is App app)
+            {
+                // We use the singleton Instance so we don't have to reload from disk
+                app.SetTheme(AppConfig.Instance.ThemeKey);
+            }
+
             preferencesWindow = null;
         }
 
@@ -2271,7 +2328,7 @@ namespace UnrealLocresEditor.Views
 
         // Report issue
         private const string GitHubIssueUrl =
-            "https://github.com/Snoozeds/UnrealLocresEditor/issues/new";
+            "https://github.com/AcTePuKc/LocresStudio/issues/new";
 
         private void ReportIssueMenuItem_Click(object sender, RoutedEventArgs e)
         {

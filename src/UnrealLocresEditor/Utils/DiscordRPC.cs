@@ -1,94 +1,107 @@
 ﻿using System;
-using System.IO;
 using DiscordRPC;
-using UnrealLocresEditor.Utils;
+using DiscordRPC.Logging;
+using UnrealLocresEditor.Models;
 
-namespace UnrealLocresEditor
+namespace UnrealLocresEditor.Utils
 {
-    public class DiscordRPC
+    public class DiscordService
     {
-        private AppConfig _appConfig;
-        private bool rpcEnabled = false;
-        public DiscordRpcClient client;
-        public DateTime? editStartTime;
-        public DateTime? idleStartTime;
+        private DiscordRpcClient? _client;
+        private const string ApplicationId = "1447101407701500017";
 
-        public void Initialize(string locresPath)
+        public DiscordService()
         {
-            _appConfig = AppConfig.Instance;
-            rpcEnabled = _appConfig.DiscordRPCEnabled;
-
-            // Initialize Discord RPC client only if enabled
-            if (rpcEnabled)
+            var config = AppConfig.Instance;
+            if (config.DiscordRPCEnabled)
             {
-                client = new DiscordRpcClient("1251663992162619472");
-
-                client.OnReady += (sender, e) =>
-                {
-                    Console.WriteLine("Received Ready from user {0}", e.User.Username);
-                };
-
-                client.OnPresenceUpdate += (sender, e) =>
-                {
-                    Console.WriteLine("Received Update! {0}", e.Presence);
-                };
-
-                client.Initialize();
+                Initialize();
             }
-
-            UpdatePresence(rpcEnabled, locresPath);
         }
 
-        public void UpdatePresence(bool enabled, string locresPath)
+        // CHANGE: "private" -> "public" so MainWindow can call it
+        public void Initialize()
         {
-            // Load config if not already loaded
-            _appConfig ??= AppConfig.Instance;
-
-            if (enabled)
+            try
             {
-                if (client == null || client.IsDisposed)
+                if (_client != null && _client.IsInitialized) return;
+
+                _client = new DiscordRpcClient(ApplicationId)
                 {
-                    client = new DiscordRpcClient("1251663992162619472");
-
-                    client.OnReady += (sender, e) =>
-                    {
-                        Console.WriteLine("Received Ready from user {0}", e.User.Username);
-                    };
-
-                    client.OnPresenceUpdate += (sender, e) =>
-                    {
-                        Console.WriteLine("Received Update! {0}", e.Presence);
-                    };
-
-                    client.Initialize();
-                }
-
-                var presence = new RichPresence
-                {
-                    Details = _appConfig.DiscordRPCPrivacy
-                        ? _appConfig.DiscordRPCPrivacyString
-                        : (
-                            locresPath == null
-                                ? "Idling"
-                                : $"Editing file: {Path.GetFileName(locresPath)}"
-                        ),
-                    Timestamps = editStartTime.HasValue
-                        ? new Timestamps(editStartTime.Value)
-                        : null,
-                    Assets = new Assets { LargeImageKey = "ule-logo" },
+                    Logger = new ConsoleLogger { Level = LogLevel.Warning }
                 };
 
-                client.SetPresence(presence);
+                _client.Initialize();
+                UpdatePresence(null);
             }
-            else
+            catch (Exception ex)
             {
-                if (client != null && !client.IsDisposed)
+                Console.WriteLine($"Discord RPC failed to initialize: {ex.Message}");
+            }
+        }
+
+        public void UpdatePresence(LocresDocument? document)
+        {
+            var config = AppConfig.Instance;
+
+            if (!config.DiscordRPCEnabled)
+            {
+                if (_client != null)
                 {
-                    client.ClearPresence();
-                    client.Dispose();
-                    client = null;
+                    _client.Dispose();
+                    _client = null;
+                }
+                return;
+            }
+
+            if (_client == null || !_client.IsInitialized)
+            {
+                Initialize();
+            }
+
+            if (_client == null) return;
+
+            bool isPrivate = config.DiscordRPCPrivacy;
+            string details = "Idle";
+            string state = "Main Menu";
+
+            if (document != null)
+            {
+                if (isPrivate)
+                {
+                    details = config.DiscordRPCPrivacyString;
+                    state = "Private Mode";
+                }
+                else
+                {
+                    details = $"Editing: {document.DisplayName}";
+                    state = $"{document.Rows.Count} Strings";
                 }
             }
+
+            try
+            {
+                _client.SetPresence(new RichPresence
+                {
+                    Details = details,
+                    State = state,
+                    Assets = new Assets
+                    {
+                        LargeImageKey = "ule-icon",
+                        LargeImageText = "UnrealLocresEditor",
+                    },
+                    Timestamps = Timestamps.Now
+                });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating presence: {ex.Message}");
+            }
+        }
+
+        public void Dispose()
+        {
+            _client?.Dispose();
         }
     }
 }

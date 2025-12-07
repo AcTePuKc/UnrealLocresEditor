@@ -3,7 +3,7 @@
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:models="clr-namespace:UnrealLocresEditor.Models"
-    Title="Unreal Locres Editor"
+    Title="Unreal Locres Studio"
     Width="800"
     Height="450"
     Background="{DynamicResource BackgroundColor}"
@@ -11,24 +11,38 @@
     Foreground="{DynamicResource TextColor}"
     Icon="/Assets/ULE-icon.ico"
     WindowStartupLocation="CenterScreen">
+
 	<Window.Styles>
-		<!-- Existing DataGrid Styles -->
+
 		<Style Selector="DataGridCell">
-			<Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
-			<Setter Property="Foreground" Value="{DynamicResource TextColor}" />
+			<Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis"/>
+			<Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
 		</Style>
+
 		<Style Selector="DataGridColumnHeader">
-			<Setter Property="Background" Value="{DynamicResource DataGridHeaderColor}" />
-			<Setter Property="Foreground" Value="{DynamicResource TextColor}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource BorderColor}" />
+			<Setter Property="Background" Value="{DynamicResource DataGridHeaderColor}"/>
+			<Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
+			<Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
 		</Style>
+
 		<Style Selector="DataGridRow:nth-child(2n)">
-			<Setter Property="Background" Value="{DynamicResource DataGridAlternateRowColor}" />
+			<Setter Property="Background" Value="{DynamicResource DataGridAlternateRowColor}"/>
 		</Style>
 
-		<!-- TAB STYLES -->
+		<Style Selector="DataGrid DataGridCell TextBlock">
+			<Setter Property="FontFamily"
+							Value="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=FontFamily}"/>
+			<Setter Property="FontSize"
+							Value="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=FontSize}"/>
+		</Style>
 
-		<!-- 1. Default State (Normal) -->
+		<Style Selector="DataGrid DataGridCell TextBox">
+			<Setter Property="FontFamily"
+							Value="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=FontFamily}"/>
+			<Setter Property="FontSize"
+							Value="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=FontSize}"/>
+		</Style>
+
 		<Style Selector="TabStripItem">
 			<Setter Property="FontSize" Value="12"/>
 			<Setter Property="Foreground" Value="{DynamicResource TextColor}"/>
@@ -46,139 +60,128 @@
 			</Setter>
 		</Style>
 
-		<!-- 2. Hover State (Unselected) -->
-		<!-- Using a slightly stronger gray so it shows up on White themes too -->
 		<Style Selector="TabStripItem:pointerover">
 			<Setter Property="Background" Value="#40808080"/>
 		</Style>
 
-		<!-- 3. Selected State (Active) -->
 		<Style Selector="TabStripItem:selected">
 			<Setter Property="Background" Value="{DynamicResource DataGridHeaderColor}"/>
 			<Setter Property="FontWeight" Value="Bold"/>
 		</Style>
 
-		<!-- 4. Selected + Hover State -->
-		<!-- This prevents the Active tab from turning gray when you mouse over it -->
 		<Style Selector="TabStripItem:selected:pointerover">
 			<Setter Property="Background" Value="{DynamicResource DataGridHeaderColor}"/>
 		</Style>
+
 	</Window.Styles>
 
 	<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,*">
+
 		<Menu Grid.Row="0" Grid.ColumnSpan="2">
 
-			<!-- FILE MENU -->
 			<MenuItem Header="_File">
-				<!-- Main Actions -->
 				<MenuItem Name="uiOpenMenuItem"
-                  Click="OpenMenuItem_Click"
-                  Header="Open locres"
-                  InputGesture="Ctrl+O" />
+									Click="OpenMenuItem_Click"
+									Header="Open locres"
+									InputGesture="Ctrl+O"/>
 				<MenuItem Name="uiMergeMenuItem"
-                  Click="MergeMenuItem_Click"
-                  Header="Merge locres" />
+									Click="MergeMenuItem_Click"
+									Header="Merge locres"/>
 
-				<MenuItem Header="-" />
+				<MenuItem Header="-"/>
 
-				<!-- Save Actions -->
 				<MenuItem Name="uiSaveMenuItem"
-                  Click="SaveMenuItem_Click"
-                  Header="Save / Export locres"
-                  InputGesture="Ctrl+S" />
+									Click="SaveMenuItem_Click"
+									Header="Save / Export locres"
+									InputGesture="Ctrl+S"/>
 
-				<MenuItem Header="-" />
+				<MenuItem Header="-"/>
 
-				<!-- Import / Export Submenu -->
 				<MenuItem Header="Import / Export Data">
 					<MenuItem Name="uiOpenSpreadsheetMenuItem"
 										Click="OpenSpreadsheetMenuItem_Click"
-										Header="Import CSV (Spreadsheet)" />
+										Header="Import CSV (Spreadsheet)"/>
 					<MenuItem Name="uiImportTxtMenuItem"
 										Click="ImportTxtMenuItem_Click"
-										Header="Import TXT (TSV)" />
-					<MenuItem Header="-" />
+										Header="Import TXT (TSV)"/>
+					<MenuItem Header="-"/>
 					<MenuItem Name="uiSaveAsMenuItem"
 										Click="SaveAsMenuItem_Click"
-										Header="Export to CSV" />
+										Header="Export to CSV"/>
 					<MenuItem Name="uiExportTxtMenuItem"
 										Click="ExportTxtMenuItem_Click"
-										Header="Export to TXT (TSV)" />
+										Header="Export to TXT (TSV)"/>
 				</MenuItem>
 
-				<MenuItem Header="-" />
+				<MenuItem Header="-"/>
 
-				<!-- Closing Actions -->
 				<MenuItem Name="uiCloseMenuItem"
-                  Click="CloseMenuItem_Click"
-                  Header="Close Current Tab"
-                  InputGesture="Ctrl+W" />
+									Click="CloseMenuItem_Click"
+									Header="Close Current Tab"
+									InputGesture="Ctrl+W"/>
 
 				<MenuItem Name="uiExitMenuItem"
-                  Click="ExitMenuItem_Click"
-                  Header="Exit"
-                  InputGesture="Alt+F4" />
+									Click="ExitMenuItem_Click"
+									Header="Exit"
+									InputGesture="Alt+F4"/>
 			</MenuItem>
 
-			<!-- EDIT MENU (Restored!) -->
 			<MenuItem Header="_Edit">
 				<MenuItem Name="uiFindMenuItem"
-                  Click="FindMenuItem_Click"
-                  Header="Find"
-                  InputGesture="Ctrl+F" />
+									Click="FindMenuItem_Click"
+									Header="Find"
+									InputGesture="Ctrl+F"/>
 				<MenuItem Name="uiFindReplaceMenuItem"
-                  Click="FindReplaceMenuItem_Click"
-                  Header="Find and replace"
-                  InputGesture="Ctrl+H" />
+									Click="FindReplaceMenuItem_Click"
+									Header="Find and replace"
+									InputGesture="Ctrl+H"/>
 				<MenuItem Click="CopySourceToTarget"
-                  Header="Copy _Source to Target"
-                  InputGesture="Ctrl+T" />
+									Header="Copy _Source to Target"
+									InputGesture="Ctrl+T"/>
 				<MenuItem Click="CopySourceToTargetMultiple"
-                  Header="Copy Source to Target (_Multiple)"
-                  InputGesture="Ctrl+Shift+T" />
-				<MenuItem Header="-" />
-				<!-- Note: This has a Name because the C# code hooks up the click event manually -->
+									Header="Copy Source to Target (_Multiple)"
+									InputGesture="Ctrl+Shift+T"/>
+				<MenuItem Header="-"/>
 				<MenuItem Name="uiPreferencesMenuItem"
-                  Header="Preferences" />
+									Header="Preferences"/>
 			</MenuItem>
 
-			<!-- LINUX MENU (Restored!) -->
 			<MenuItem Name="uiLinuxHeader" Header="_Linux">
 				<MenuItem Name="uiWinePrefix"
-                  Click="WinePrefix_Click"
-                  Header="Attempt wine prefix" />
+									Click="WinePrefix_Click"
+									Header="Attempt wine prefix"/>
 			</MenuItem>
 
-			<!-- HELP MENU (Restored!) -->
 			<MenuItem Header="_Help">
 				<MenuItem Name="reportIssueMenuItem"
-                  Click="ReportIssueMenuItem_Click"
-                  Header="Report issue" />
+									Click="ReportIssueMenuItem_Click"
+									Header="Report issue"/>
 				<MenuItem Name="uiAboutMenuItem"
-                  Click="AboutMenuItem_Click"
-                  Header="About" />
+									Click="AboutMenuItem_Click"
+									Header="About"/>
 			</MenuItem>
+
 		</Menu>
 
-		<!-- REPLACED COMBOBOX WITH TABSTRIP -->
 		<TabStrip
-    x:Name="uiDocumentTabs"
-    Grid.Row="1"
-    Grid.ColumnSpan="2"
-    Margin="5,5,5,0"
-    MinHeight="30"
-    Background="Transparent"
-    x:CompileBindings="False"
-    ItemsSource="{Binding Documents}"
-    SelectedItem="{Binding SelectedDocument}">
+				x:Name="uiDocumentTabs"
+				Grid.Row="1"
+				Grid.ColumnSpan="2"
+				Margin="5,5,5,0"
+				MinHeight="30"
+				Background="Transparent"
+				x:CompileBindings="False"
+				ItemsSource="{Binding Documents}"
+				SelectedItem="{Binding SelectedDocument}">
+
 			<TabStrip.ItemTemplate>
 				<DataTemplate x:DataType="models:LocresDocument">
 					<StackPanel Orientation="Horizontal" Spacing="5">
-						<TextBlock Text="{Binding TabHeader}"
-											 VerticalAlignment="Center"/>
+						<TextBlock Text="{Binding TabHeader}" VerticalAlignment="Center"/>
 					</StackPanel>
 				</DataTemplate>
 			</TabStrip.ItemTemplate>
+
 		</TabStrip>
 
 		<DataGrid
@@ -195,11 +198,7 @@
 				GridLinesVisibility="All"
 				IsReadOnly="False"
 				MinColumnWidth="50">
-			<DataGrid.Styles>
-				<Style Selector="DataGridCell">
-					<Setter Property="Foreground" Value="{DynamicResource TextColor}" />
-				</Style>
-			</DataGrid.Styles>
 		</DataGrid>
+
 	</Grid>
 </Window>

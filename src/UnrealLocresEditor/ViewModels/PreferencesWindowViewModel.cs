@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reactive;
 using System.Runtime.InteropServices;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using ReactiveUI;
@@ -17,9 +18,20 @@ namespace UnrealLocresEditor.ViewModels
     {
         private readonly Window _window;
         private readonly MainWindow _mainWindow;
-        private bool _isDarkTheme;
+
+        // --- THEME SETTINGS ---
+        public List<ThemeOption> AvailableThemes { get; }
+        private ThemeOption _selectedTheme;
+        public ThemeOption SelectedTheme
+        {
+            get => _selectedTheme;
+            set => this.RaiseAndSetIfChanged(ref _selectedTheme, value);
+        }
+
         private Color _accentColor;
-        private DiscordRPC _discordRPC;
+
+        // --- OTHER SETTINGS ---
+        private DiscordService _discordRPC;
         private bool _discordRPCEnabled;
         private bool _discordRPCPrivacy;
         private string _discordRPCPrivacyString;
@@ -29,31 +41,26 @@ namespace UnrealLocresEditor.ViewModels
         private bool _autoUpdateEnabled;
         private double _defaultColumnWidth;
 
-        public bool IsDarkTheme
-        {
-            get => _isDarkTheme;
-            set => this.RaiseAndSetIfChanged(ref _isDarkTheme, value);
-        }
+        // --- FONT SETTINGS ---
+        private IEnumerable<FontFamily> _availableFonts;
+        private FontFamily _selectedFont;
+        private string _editorFontFamily;
+        private double _editorFontSize;
+        private bool _enableRTL;
+
+        // *** RESTORED MISSING PROPERTY ***
+        public bool IsLinux => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
 
         public Color AccentColor
         {
             get => _accentColor;
             set
             {
-                var hexColor = value.ToString();
-
-                // Ensure it's a valid hex color
-                if (AppConfig.IsValidHexColor(hexColor))
-                {
+                var hex = value.ToString();
+                if (AppConfig.IsValidHexColor(hex))
                     this.RaiseAndSetIfChanged(ref _accentColor, value);
-                }
                 else
-                {
-                    Console.WriteLine(
-                        $"Invalid AccentColor selected: {hexColor}. Reverting to default."
-                    );
                     this.RaiseAndSetIfChanged(ref _accentColor, Color.Parse("#4e3cb2"));
-                }
             }
         }
 
@@ -87,15 +94,12 @@ namespace UnrealLocresEditor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _selectedAutoSaveInterval, value);
         }
 
-        public IEnumerable<TimeSpan> AutoSaveIntervals { get; } =
-            new[]
-            {
-                TimeSpan.FromMinutes(1),
-                TimeSpan.FromMinutes(5),
-                TimeSpan.FromMinutes(10),
-                TimeSpan.FromMinutes(15),
-                TimeSpan.FromMinutes(30),
-            };
+        public IEnumerable<TimeSpan> AutoSaveIntervals { get; } = new[]
+        {
+            TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5),
+            TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(30),
+        };
+
         public bool AutoSaveEnabled
         {
             get => _autoSaveEnabled;
@@ -113,12 +117,39 @@ namespace UnrealLocresEditor.ViewModels
             set
             {
                 var clamped = Math.Clamp(value, 10, 10000);
-                var snapped = Math.Round(clamped / 50.0) * 50.0;
-                this.RaiseAndSetIfChanged(ref _defaultColumnWidth, snapped);
+                this.RaiseAndSetIfChanged(ref _defaultColumnWidth, Math.Round(clamped / 50.0) * 50.0);
             }
         }
 
-        public bool IsLinux => RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
+        public IEnumerable<FontFamily> AvailableFonts
+        {
+            get => _availableFonts;
+            set => this.RaiseAndSetIfChanged(ref _availableFonts, value);
+        }
+
+        public FontFamily SelectedFont
+        {
+            get => _selectedFont;
+            set => this.RaiseAndSetIfChanged(ref _selectedFont, value);
+        }
+        public string EditorFontFamily
+        {
+            get => _editorFontFamily;
+            set => this.RaiseAndSetIfChanged(ref _editorFontFamily, value);
+        }
+
+        public double EditorFontSize
+        {
+            get => _editorFontSize;
+            set => this.RaiseAndSetIfChanged(ref _editorFontSize, Math.Clamp(value, 8, 72));
+        }
+
+        public bool EnableRTL
+        {
+            get => _enableRTL;
+            set => this.RaiseAndSetIfChanged(ref _enableRTL, value);
+        }
+
         public ReactiveCommand<Unit, Unit> SaveCommand { get; }
         public ReactiveCommand<Unit, Unit> CancelCommand { get; }
 
@@ -126,10 +157,27 @@ namespace UnrealLocresEditor.ViewModels
         {
             _window = window;
             _mainWindow = mainWindow;
-
-            // Load current settings
             var config = AppConfig.Instance;
-            IsDarkTheme = config.IsDarkTheme;
+
+            // 1. SETUP THEMES LIST
+            AvailableThemes = new List<ThemeOption>
+            {
+                new ThemeOption("Cool Gray", "CoolGray"),
+                new ThemeOption("Purple Dark (Default)", "Default"),
+                new ThemeOption("Classic Dark", "Dark"),
+                new ThemeOption("Soft Light", "Light")
+            };
+
+            // Set Selected Theme based on Config
+            SelectedTheme = AvailableThemes.FirstOrDefault(x => x.Key == config.ThemeKey)
+                            ?? AvailableThemes.First(x => x.Key == "Default");
+
+            // 2. SETUP FONTS
+            AvailableFonts = FontManager.Current.SystemFonts.OrderBy(x => x.Name).ToList();
+            var currentFont = AvailableFonts.FirstOrDefault(x => x.Name == config.EditorFontFamily);
+            SelectedFont = currentFont ?? AvailableFonts.FirstOrDefault(x => x.Name == "Segoe UI");
+
+            // 3. LOAD OTHER SETTINGS
             AccentColor = Color.Parse(config.AccentColor);
             DiscordRPCEnabled = config.DiscordRPCEnabled;
             DiscordRPCPrivacy = config.DiscordRPCPrivacy;
@@ -139,13 +187,13 @@ namespace UnrealLocresEditor.ViewModels
             AutoSaveEnabled = config.AutoSaveEnabled;
             AutoUpdateEnabled = config.AutoUpdateEnabled;
             DefaultColumnWidth = config.DefaultColumnWidth;
+            EditorFontFamily = config.EditorFontFamily;
+            EditorFontSize = config.EditorFontSize;
+            EnableRTL = config.EnableRTL;
 
             if (!AutoSaveIntervals.Contains(SelectedAutoSaveInterval))
-            {
                 SelectedAutoSaveInterval = TimeSpan.FromMinutes(5);
-            }
 
-            // Initialize commands
             SaveCommand = ReactiveCommand.Create(Save);
             CancelCommand = ReactiveCommand.Create(Cancel);
         }
@@ -153,7 +201,12 @@ namespace UnrealLocresEditor.ViewModels
         private void Save()
         {
             var config = AppConfig.Instance;
-            config.IsDarkTheme = IsDarkTheme;
+
+            // 1. SAVE THEME & FONT
+            config.ThemeKey = SelectedTheme.Key;
+            if (SelectedFont != null) config.EditorFontFamily = SelectedFont.Name;
+
+            // 2. SAVE OTHER SETTINGS
             config.AccentColor = AccentColor.ToString();
             config.DiscordRPCEnabled = DiscordRPCEnabled;
             config.DiscordRPCPrivacy = DiscordRPCPrivacy;
@@ -163,11 +216,21 @@ namespace UnrealLocresEditor.ViewModels
             config.AutoSaveEnabled = AutoSaveEnabled;
             config.AutoUpdateEnabled = AutoUpdateEnabled;
             config.DefaultColumnWidth = DefaultColumnWidth;
+            config.EditorFontSize = EditorFontSize;
+            config.EnableRTL = EnableRTL;
 
-            _discordRPC?.UpdatePresence(DiscordRPCEnabled, _mainWindow._currentLocresFilePath);
-
+            // 3. SAVE TO DISK
             config.Save();
-            Console.WriteLine("Config saved.");
+
+            // 4. APPLY INSTANTLY
+            if (Application.Current is App app)
+            {
+                app.SetTheme(config.ThemeKey);
+                app.SetAccent(AccentColor);
+            }
+
+            _mainWindow?.ApplyEditorSettings();
+
             _window.Close();
         }
 
@@ -175,5 +238,13 @@ namespace UnrealLocresEditor.ViewModels
         {
             _window.Close();
         }
+    }
+
+    public class ThemeOption
+    {
+        public string Name { get; }
+        public string Key { get; }
+        public ThemeOption(string name, string key) { Name = name; Key = key; }
+        public override string ToString() => Name;
     }
 }

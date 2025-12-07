@@ -22,6 +22,12 @@ namespace UnrealLocresEditor.Models
 
         public event PropertyChangedEventHandler PropertyChanged;
 
+       
+        public DataRow()
+        {
+            _values = System.Array.Empty<string>();
+        }
+
         public virtual void OnPropertyChanged(string propertyName) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }

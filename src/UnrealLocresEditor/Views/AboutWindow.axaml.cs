@@ -10,9 +10,9 @@ namespace UnrealLocresEditor.Views
 {
     public partial class AboutWindow : Window
     {
-        public string AppName { get; } = "Unreal Locres Editor";
+        public string AppName { get; } = "Unreal Locres Studio";
         public string Version { get; private set; } = "Version: Unknown";
-        private const string GitHubUrl = "https://github.com/Snoozeds/UnrealLocresEditor";
+        private const string GitHubUrl = "https://github.com/AcTePuKc/LocresStudio";
         private WindowNotificationManager _notificationManager;
         private MainWindow _mainWindow;
 

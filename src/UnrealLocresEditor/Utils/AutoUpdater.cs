@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text.Json; // Requires System.Text.Json package
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Controls.Notifications;
@@ -14,13 +15,13 @@ using UnrealLocresEditor.Views;
 
 public class AutoUpdater
 {
-    private const string VersionUrl =
-        "https://raw.githubusercontent.com/Snoozeds/UnrealLocresEditor/main/version.txt";
+    // Queries the GitHub API directly for the tag name
+    private const string GitHubApiUrl = "https://api.github.com/repos/AcTePuKc/LocresStudio/releases/latest";
     private const string LocalVersionFile = "version.txt";
     private const string TempUpdatePath = "update.zip";
+
     private readonly INotificationManager _notificationManager;
     private readonly MainWindow _mainWindow;
-    private AppConfig _appConfig;
 
     public AutoUpdater(INotificationManager notificationManager, MainWindow mainWindow)
     {
@@ -30,7 +31,7 @@ public class AutoUpdater
 
     public async Task CheckForUpdates(bool manualCheck = false)
     {
-        if (System.Diagnostics.Debugger.IsAttached)
+        if (Debugger.IsAttached)
         {
             Console.WriteLine("Skipping update check - debug mode.");
             return;
@@ -38,223 +39,124 @@ public class AutoUpdater
 
         try
         {
-            string latestVersion = await GetLatestVersion();
-            string currentVersion = File.Exists(LocalVersionFile)
-                ? File.ReadAllText(LocalVersionFile).Replace("\r", "").Replace("\n", "").TrimEnd()
-                : "0.0.0";
+            // 1. Get Latest Version Tag from GitHub API (e.g. "v1.0")
+            string latestVersion = (await GetLatestVersionFromApi()).Trim();
 
-            if (latestVersion != currentVersion)
+            // 2. Get Local Version (e.g. "v1.0" from the text file in the folder)
+            string currentVersion = File.Exists(LocalVersionFile)
+                ? File.ReadAllText(LocalVersionFile).Trim()
+                : "v0.0.0";
+
+            // 3. Compare
+            if (!VersionsMatch(currentVersion, latestVersion))
             {
-                // Show a dialog asking the user if they want to update
+                // UPDATE AVAILABLE
                 if (manualCheck)
                 {
                     var manualUpdateDialog = await ShowManualUpdateDialog(latestVersion);
-                    if (manualUpdateDialog != "Update")
-                    {
-                        return;
-                    }
+                    if (manualUpdateDialog != "Update") return;
                 }
                 else
                 {
+                    // Auto-check on startup
                     if (_mainWindow._hasUnsavedChanges)
                     {
                         var result = await ShowUpdateConfirmDialog();
-                        if (result != "Update")
-                        {
-                            return;
-                        }
+                        if (result != "Update") return;
                     }
                 }
 
                 await ShowUpdateNotification();
+
+                // Construct URL: .../releases/download/v1.0/LocresStudio-v1.0-win-x64.zip
                 string platformSpecificUrl = GetPlatformSpecificUrl(latestVersion);
+
                 await DownloadUpdate(platformSpecificUrl);
                 LaunchUpdateProcess();
             }
-            else
+            else if (manualCheck)
             {
-                if (manualCheck)
-                {
-                    _notificationManager.Show(
-                        new Notification(
-                            "No Updates Available",
-                            "You are running the latest version.",
-                            NotificationType.Information
-                        )
-                    );
-                }
-                else
-                {
-                    Console.WriteLine("You are running the latest version.");
-                }
+                _notificationManager.Show(new Notification(
+                    "No Updates Available",
+                    $"You are running the latest version ({currentVersion}).",
+                    NotificationType.Information));
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error checking for updates: {ex.Message}");
-
+            Console.WriteLine($"Update check failed: {ex.Message}");
             if (manualCheck)
             {
-                _notificationManager.Show(
-                    new Notification(
-                        "Update Check Failed",
-                        $"Could not check for updates: {ex.Message}",
-                        NotificationType.Error
-                    )
-                );
-            }
-            else
-            {
-                throw;
+                _notificationManager.Show(new Notification(
+                    "Update Check Failed",
+                    $"Error: {ex.Message}",
+                    NotificationType.Error));
             }
         }
     }
 
-    private async Task<string> ShowManualUpdateDialog(string latestVersion)
+    private bool VersionsMatch(string v1, string v2)
     {
-        var dialog = new Window
-        {
-            Title = "Update Available",
-            Width = 400,
-            Height = 200,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Avalonia.Thickness(20),
-                Spacing = 20,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text =
-                            $"A new version {latestVersion} is available. Would you like to update?",
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 10,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Children =
-                        {
-                            new Button { Content = "Update" },
-                            new Button { Content = "Cancel" },
-                        },
-                    },
-                },
-            },
-        };
-
-        var taskCompletionSource = new TaskCompletionSource<string>();
-
-        var buttons = ((StackPanel)((StackPanel)dialog.Content).Children[1]).Children;
-        ((Button)buttons[0]).Click += (s, e) =>
-        {
-            taskCompletionSource.SetResult("Update");
-            dialog.Close();
-        };
-
-        ((Button)buttons[1]).Click += (s, e) =>
-        {
-            taskCompletionSource.SetResult("Cancel");
-            dialog.Close();
-        };
-
-        await dialog.ShowDialog(_mainWindow);
-        return await taskCompletionSource.Task;
+        // Normalize versions (remove 'v', trim spaces)
+        v1 = v1.TrimStart('v', 'V').Trim();
+        v2 = v2.TrimStart('v', 'V').Trim();
+        return string.Equals(v1, v2, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task<string> ShowUpdateConfirmDialog()
+    private async Task<string> GetLatestVersionFromApi()
     {
-        var dialog = new Window
+        using (HttpClient client = new HttpClient())
         {
-            Title = "Unsaved Changes",
-            Width = 400,
-            Height = 150,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
+            // GitHub API requires a User-Agent
+            client.DefaultRequestHeaders.Add("User-Agent", "LocresStudio-AutoUpdater");
+            client.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
+
+            var response = await client.GetAsync(GitHubApiUrl);
+            if (!response.IsSuccessStatusCode)
             {
-                Margin = new Avalonia.Thickness(20),
-                Spacing = 20,
-                Children =
+                throw new Exception($"GitHub API returned {response.StatusCode}");
+            }
+
+            string json = await response.Content.ReadAsStringAsync();
+
+            using (JsonDocument doc = JsonDocument.Parse(json))
+            {
+                if (doc.RootElement.TryGetProperty("tag_name", out JsonElement tagName))
                 {
-                    new TextBlock
-                    {
-                        Text =
-                            "You have unsaved changes. Would you like to save your changes before updating?",
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                    new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        Spacing = 10,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        Children =
-                        {
-                            new Button { Content = "Save and Update" },
-                            new Button { Content = "Update without Saving" },
-                            new Button { Content = "Cancel" },
-                        },
-                    },
-                },
-            },
-        };
-
-        var taskCompletionSource = new TaskCompletionSource<string>();
-
-        var buttons = ((StackPanel)((StackPanel)dialog.Content).Children[1]).Children;
-        ((Button)buttons[0]).Click += async (s, e) =>
-        {
-            try
-            {
-                _mainWindow.SaveEditedData();
-                taskCompletionSource.SetResult("Update");
-                dialog.Close();
+                    return tagName.GetString() ?? "v0.0.0";
+                }
             }
-            catch (Exception ex)
-            {
-                _notificationManager.Show(
-                    new Notification(
-                        "Save Error",
-                        $"Failed to save changes: {ex.Message}",
-                        NotificationType.Error
-                    )
-                );
-                taskCompletionSource.SetResult("Cancel");
-                dialog.Close();
-            }
-        };
-
-        ((Button)buttons[1]).Click += (s, e) =>
-        {
-            taskCompletionSource.SetResult("Update");
-            dialog.Close();
-        };
-
-        ((Button)buttons[2]).Click += (s, e) =>
-        {
-            taskCompletionSource.SetResult("Cancel");
-            dialog.Close();
-        };
-
-        await dialog.ShowDialog(_mainWindow);
-        return await taskCompletionSource.Task;
+            throw new Exception("Could not parse tag_name from GitHub API response.");
+        }
     }
 
-    private async Task ShowUpdateNotification()
+    private string GetPlatformSpecificUrl(string version)
     {
-        var notification = new Notification
-        {
-            Title = "Update in progress",
-            Message = "The application will restart after the update.",
-            Type = NotificationType.Information,
-            Expiration = TimeSpan.FromSeconds(9999),
-        };
+        string os = GetOperatingSystem();
+        string arch = Environment.Is64BitOperatingSystem ? "x64" : "x86";
 
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        // Matches the format defined in release.yml: LocresStudio-v1.0-win-x64.zip
+        string fileName = $"LocresStudio-{version}-{os}-{arch}.zip";
+
+        // Points to the specific release asset
+        return $"https://github.com/AcTePuKc/LocresStudio/releases/download/{version}/{fileName}";
+    }
+
+    private string GetOperatingSystem()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "win";
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "linux";
+        throw new NotSupportedException("Unsupported OS platform.");
+    }
+
+    private async Task DownloadUpdate(string url)
+    {
+        using (HttpClient client = new HttpClient())
         {
-            _notificationManager.Show(notification);
-        });
+            client.DefaultRequestHeaders.Add("User-Agent", "LocresStudio-AutoUpdater");
+            byte[] updateData = await client.GetByteArrayAsync(url);
+            await File.WriteAllBytesAsync(TempUpdatePath, updateData);
+        }
     }
 
     private void LaunchUpdateProcess()
@@ -266,9 +168,7 @@ public class AutoUpdater
         string scriptContent;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            // Windows script
-            scriptContent =
-                @$"
+            scriptContent = @$"
 @echo off
 timeout /t 1 /nobreak >nul
 :loop
@@ -287,9 +187,7 @@ if errorlevel 1 (
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            // Linux script
-            scriptContent =
-                @$"
+            scriptContent = @$"
 #!/bin/bash
 while true; do
     if ! ps -p {currentProcessId} > /dev/null; then
@@ -303,89 +201,106 @@ while true; do
     fi
 done";
             File.WriteAllText(updateScriptPath + ".sh", scriptContent);
-            // Make the script executable
-            Process.Start(
-                new ProcessStartInfo
-                {
-                    FileName = "chmod",
-                    Arguments = $"+x {updateScriptPath}.sh",
-                    UseShellExecute = true,
-                }
-            );
+            Process.Start(new ProcessStartInfo { FileName = "chmod", Arguments = $"+x {updateScriptPath}.sh", UseShellExecute = true });
         }
         else
         {
-            throw new NotSupportedException("Unsupported OS platform.");
+            throw new NotSupportedException("Unsupported OS.");
         }
 
-        Process.Start(
-            new ProcessStartInfo
-            {
-                FileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "bash",
-                Arguments = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                    ? $"/c start /min \"\" \"{updateScriptPath}.bat\""
-                    : updateScriptPath + ".sh",
-                UseShellExecute = true,
-                CreateNoWindow = true,
-            }
-        );
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "cmd.exe" : "bash",
+            Arguments = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"/c start /min \"\" \"{updateScriptPath}.bat\"" : updateScriptPath + ".sh",
+            UseShellExecute = true,
+            CreateNoWindow = true
+        });
 
         Environment.Exit(0);
     }
 
-    private async Task<string> GetLatestVersion()
+    // --- UI DIALOGS ---
+
+    private async Task<string> ShowManualUpdateDialog(string latestVersion)
     {
-        using (HttpClient client = new HttpClient())
+        var dialog = new Window
         {
-            try
+            Title = "Update Available",
+            Width = 400,
+            Height = 200,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
             {
-                HttpResponseMessage response = await client.GetAsync(VersionUrl);
-                if (!response.IsSuccessStatusCode)
+                Margin = new Avalonia.Thickness(20),
+                Spacing = 20,
+                Children =
                 {
-                    throw new Exception(
-                        $"Failed to fetch version file. HTTP Status Code: {response.StatusCode}"
-                    );
+                    new TextBlock { Text = $"A new version {latestVersion} is available. Update now?", TextWrapping = TextWrapping.Wrap },
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center,
+                        Children = { new Button { Content = "Update" }, new Button { Content = "Cancel" } } }
                 }
-                string version = await response.Content.ReadAsStringAsync();
-                return version.Replace("\r", "").Replace("\n", "").TrimEnd();
             }
+        };
+
+        var tcs = new TaskCompletionSource<string>();
+        var buttons = ((StackPanel)((StackPanel)dialog.Content).Children[1]).Children;
+
+        ((Button)buttons[0]).Click += (s, e) => { tcs.SetResult("Update"); dialog.Close(); };
+        ((Button)buttons[1]).Click += (s, e) => { tcs.SetResult("Cancel"); dialog.Close(); };
+
+        await dialog.ShowDialog(_mainWindow);
+        return await tcs.Task;
+    }
+
+    private async Task<string> ShowUpdateConfirmDialog()
+    {
+        var dialog = new Window
+        {
+            Title = "Unsaved Changes",
+            Width = 400,
+            Height = 150,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Avalonia.Thickness(20),
+                Spacing = 20,
+                Children =
+                {
+                    new TextBlock { Text = "You have unsaved changes. Save before updating?", TextWrapping = TextWrapping.Wrap },
+                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, HorizontalAlignment = HorizontalAlignment.Center,
+                        Children = { new Button { Content = "Save & Update" }, new Button { Content = "Update Anyway" }, new Button { Content = "Cancel" } } }
+                }
+            }
+        };
+
+        var tcs = new TaskCompletionSource<string>();
+        var buttons = ((StackPanel)((StackPanel)dialog.Content).Children[1]).Children;
+
+        ((Button)buttons[0]).Click += (s, e) =>
+        {
+            try { _mainWindow.SaveEditedData(); tcs.SetResult("Update"); dialog.Close(); }
             catch (Exception ex)
             {
-                throw new Exception("Unexpected error: " + ex.Message);
+                _notificationManager.Show(new Notification("Save Error", ex.Message, NotificationType.Error));
+                tcs.SetResult("Cancel"); dialog.Close();
             }
-        }
+        };
+        ((Button)buttons[1]).Click += (s, e) => { tcs.SetResult("Update"); dialog.Close(); };
+        ((Button)buttons[2]).Click += (s, e) => { tcs.SetResult("Cancel"); dialog.Close(); };
+
+        await dialog.ShowDialog(_mainWindow);
+        return await tcs.Task;
     }
 
-    private string GetPlatformSpecificUrl(string version)
+    private async Task ShowUpdateNotification()
     {
-        string os = GetOperatingSystem();
-        string arch = Environment.Is64BitOperatingSystem ? "x64" : "x86";
-        string fileName = $"UnrealLocresEditor-{version}-{os}-{arch}.zip";
-        return $"https://github.com/Snoozeds/UnrealLocresEditor/releases/latest/download/{fileName}";
-    }
-
-    private string GetOperatingSystem()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            return "win";
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return "linux";
-        }
-        else
-        {
-            throw new NotSupportedException("Unsupported OS platform.");
-        }
-    }
-
-    private async Task DownloadUpdate(string url)
-    {
-        using (HttpClient client = new HttpClient())
-        {
-            byte[] updateData = await client.GetByteArrayAsync(url);
-            await File.WriteAllBytesAsync(TempUpdatePath, updateData);
-        }
+            _notificationManager.Show(new Notification(
+                "Update in progress",
+                "The application will restart shortly.",
+                NotificationType.Information,
+                TimeSpan.FromSeconds(10)));
+        });
     }
 }

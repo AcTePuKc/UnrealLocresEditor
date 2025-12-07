@@ -5,7 +5,7 @@
         x:DataType="vm:PreferencesWindowViewModel"
         Title="Preferences"
         Width="600"
-        Height="400"
+        Height="500"
         WindowStartupLocation="CenterOwner"
 		Icon="/Assets/ULE-icon.ico"
 		CanResize="False"
@@ -47,10 +47,18 @@
 			<!-- Appearance Settings -->
 			<TabItem Header="Appearance">
 				<StackPanel Spacing="16" Margin="16" Classes="settingsSection">
+
+					<!-- THEME SECTION -->
 					<StackPanel>
-						<ToggleSwitch Content="Dark Theme (requires restart)"
-                                    IsChecked="{Binding IsDarkTheme}"
-                                    FontSize="18"/>
+						<TextBlock Text="Theme" Margin="0,0,0,8" FontSize="18"/>
+
+						<!-- NEW: Bind to AvailableThemes -->
+						<ComboBox ItemsSource="{Binding AvailableThemes}"
+											SelectedItem="{Binding SelectedTheme}"
+											Width="200" HorizontalAlignment="Left"
+											FontSize="16">
+							<!-- We don't need manual ComboBoxItems anymore! -->
+						</ComboBox>
 					</StackPanel>
 
 					<StackPanel>
@@ -126,9 +134,31 @@
                       IsChecked="{Binding AutoUpdateEnabled}"
                       FontSize="18"/>
 					<ToggleSwitch Content="Use Wine Compatibility (Linux)"
-                                  IsChecked="{Binding UseWine}"
-                                  FontSize="18"
-                                  IsVisible="{Binding IsLinux}"/>
+												IsChecked="{Binding UseWine}"
+												FontSize="18"
+												IsVisible="{Binding IsLinux}"/>
+
+					<TextBlock Text="Editor Fonts and Layout" FontWeight="Bold" Margin="0,16,0,8" FontSize="18"/>
+
+					<Grid ColumnDefinitions="Auto, *" Margin="0,5">
+						<TextBlock Grid.Column="0" Text="Font Family:" VerticalAlignment="Center" Width="120" FontSize="18"/>
+						<ComboBox Grid.Column="1"
+                      ItemsSource="{Binding AvailableFonts}"
+                      SelectedItem="{Binding SelectedFont}"
+                      DisplayMemberBinding="{Binding Name}"
+                      HorizontalAlignment="Stretch" />
+					</Grid>
+
+					<Grid ColumnDefinitions="Auto, *" Margin="0,5">
+						<TextBlock Grid.Column="0" Text="Font Size:" VerticalAlignment="Center" Width="120" FontSize="18"/>
+						<NumericUpDown Grid.Column="1" Value="{Binding EditorFontSize}" Minimum="8" Maximum="72" Increment="1" Width="100" HorizontalAlignment="Left" />
+					</Grid>
+
+					<ToggleSwitch Content="Enable Right-to-Left (RTL) Text"
+												IsChecked="{Binding EnableRTL}"
+												Margin="0,5"
+												FontSize="18"/>
+
 				</StackPanel>
 			</TabItem>
 		</TabControl>

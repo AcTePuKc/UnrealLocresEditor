@@ -8,7 +8,7 @@ namespace UnrealLocresEditor.Utils
 {
     public static class DefaultConfig
     {
-        public static readonly bool IsDarkTheme = true;
+        public static readonly string ThemeKey = "CoolGray";
         public static readonly string AccentColor = "#4e3cb2";
         public static readonly bool DiscordRPCEnabled = true;
         public static readonly bool DiscordRPCPrivacy = false;
@@ -18,14 +18,19 @@ namespace UnrealLocresEditor.Utils
         public static readonly bool AutoSaveEnabled = true;
         public static readonly bool AutoUpdateEnabled = true;
         public static readonly double DefaultColumnWidth = 300;
-    }
+
+        // NEW FONT SETTINGS
+        public static readonly string EditorFontFamily = "Segoe UI"; // Default font
+        public static readonly double EditorFontSize = 14.0;         // Default size
+        public static readonly bool EnableRTL = false;               // Default Left-to-Right
+    }
 
     public class AppConfig
     {
         private static AppConfig? _instance;
         private static readonly object _lock = new object();
 
-        public bool IsDarkTheme { get; set; } = DefaultConfig.IsDarkTheme;
+        public string ThemeKey { get; set; } = DefaultConfig.ThemeKey;
         public string AccentColor { get; set; } = DefaultConfig.AccentColor;
         public bool DiscordRPCEnabled { get; set; } = DefaultConfig.DiscordRPCEnabled;
         public bool DiscordRPCPrivacy { get; set; } = DefaultConfig.DiscordRPCPrivacy;
@@ -35,6 +40,11 @@ namespace UnrealLocresEditor.Utils
         public bool AutoSaveEnabled { get; set; } = DefaultConfig.AutoSaveEnabled;
         public bool AutoUpdateEnabled { get; set; } = DefaultConfig.AutoUpdateEnabled;
         public double DefaultColumnWidth { get; set; } = DefaultConfig.DefaultColumnWidth;
+
+        // NEW FONT SETTINGS PROPERTIES
+        public string EditorFontFamily { get; set; } = DefaultConfig.EditorFontFamily;
+        public double EditorFontSize { get; set; } = DefaultConfig.EditorFontSize;
+        public bool EnableRTL { get; set; } = DefaultConfig.EnableRTL;
 
         public static AppConfig Instance
         {
@@ -56,16 +66,16 @@ namespace UnrealLocresEditor.Utils
             if (OperatingSystem.IsWindows())
             {
                 return Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "UnrealLocresEditor"
+                  Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                  "UnrealLocresEditor"
                 );
             }
             else if (OperatingSystem.IsLinux())
             {
                 return Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                    ".config",
-                    "UnrealLocresEditor"
+                  Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                  ".config",
+                  "UnrealLocresEditor"
                 );
             }
 
@@ -82,50 +92,55 @@ namespace UnrealLocresEditor.Utils
         private static Dictionary<string, Func<AppConfig, bool>> GetValidationRules()
         {
             return new Dictionary<string, Func<AppConfig, bool>>()
-            {
+      {
+        { "AccentColor", config => IsValidHexColor(config.AccentColor) },
+        {
+          "DiscordRPCEnabled",
+          config => config.DiscordRPCEnabled == true || config.DiscordRPCEnabled == false
+        },
+        {
+          "DiscordRPCPrivacy",
+          config => config.DiscordRPCPrivacy == true || config.DiscordRPCPrivacy == false
+        },
+        {
+          "DiscordRPCPrivacyString",
+          config => !string.IsNullOrEmpty(config.DiscordRPCPrivacyString)
+        },
+        { "UseWine", config => config.UseWine == true || config.UseWine == false },
+        {
+          "AutoSaveInterval",
+          config =>
+            config.AutoSaveInterval > TimeSpan.Zero
+            && config.AutoSaveInterval.TotalMilliseconds <= int.MaxValue
+        },
+        {
+          "AutoSaveEnabled",
+          config => config.AutoSaveEnabled == true || config.AutoSaveEnabled == false
+        },
+        {
+          "AutoUpdateEnabled",
+          config => config.AutoUpdateEnabled == true || config.AutoUpdateEnabled == false
+        },
+        {
+          "DefaultColumnWidth",
+          config => config.DefaultColumnWidth > 0 && config.DefaultColumnWidth <= 2500
+        },
+                // NEW VALIDATION RULES
                 {
-                    "IsDarkTheme",
-                    config => config.IsDarkTheme == true || config.IsDarkTheme == false
-                },
-                { "AccentColor", config => IsValidHexColor(config.AccentColor) },
-                {
-                    "DiscordRPCEnabled",
-                    config => config.DiscordRPCEnabled == true || config.DiscordRPCEnabled == false
+                    "EditorFontSize",
+                    config => config.EditorFontSize >= 8 && config.EditorFontSize <= 72
                 },
                 {
-                    "DiscordRPCPrivacy",
-                    config => config.DiscordRPCPrivacy == true || config.DiscordRPCPrivacy == false
+                    "EnableRTL",
+                    config => config.EnableRTL == true || config.EnableRTL == false
                 },
-                {
-                    "DiscordRPCPrivacyString",
-                    config => !string.IsNullOrEmpty(config.DiscordRPCPrivacyString)
-                },
-                { "UseWine", config => config.UseWine == true || config.UseWine == false },
-                {
-                    "AutoSaveInterval",
-                    config =>
-                        config.AutoSaveInterval > TimeSpan.Zero
-                        && config.AutoSaveInterval.TotalMilliseconds <= int.MaxValue
-                },
-                {
-                    "AutoSaveEnabled",
-                    config => config.AutoSaveEnabled == true || config.AutoSaveEnabled == false
-                },
-                {
-                    "AutoUpdateEnabled",
-                    config => config.AutoUpdateEnabled == true || config.AutoUpdateEnabled == false
-                },
-                {
-                    "DefaultColumnWidth",
-                    config => config.DefaultColumnWidth > 0 && config.DefaultColumnWidth <= 2500
-                },
-            };
+      };
         }
 
         public static bool IsValidHexColor(string color)
         {
-            // Avalonia only seems to support 6 digit hex codes (not including #)
-            if (color.Length > 7)
+            // Avalonia only seems to support 6 digit hex codes (not including #)
+            if (color.Length > 7)
             {
                 color = color.Substring(0, 7);
             }
@@ -156,11 +171,11 @@ namespace UnrealLocresEditor.Utils
                                 var value = property.GetValue(config);
                                 if (!rule.Value(config))
                                 {
-                                    // If validation fails, revert to the default config value
-                                    property.SetValue(
-                                        config,
-                                        typeof(DefaultConfig).GetProperty(rule.Key)?.GetValue(null)
-                                    );
+                                    // If validation fails, revert to the default config value
+                                    property.SetValue(
+                    config,
+                    typeof(DefaultConfig).GetProperty(rule.Key)?.GetValue(null)
+                  );
                                 }
                             }
                         }
@@ -179,7 +194,7 @@ namespace UnrealLocresEditor.Utils
             try
             {
                 Console.WriteLine(
-                    $"Saving config: {JsonConvert.SerializeObject(this, Formatting.Indented)}"
+                  $"Saving config: {JsonConvert.SerializeObject(this, Formatting.Indented)}"
                 );
                 string filePath = GetConfigFilePath();
                 string json = JsonConvert.SerializeObject(this, Formatting.Indented);

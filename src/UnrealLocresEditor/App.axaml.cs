@@ -1,18 +1,25 @@
-﻿using System;
+﻿using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Markup.Xaml;
+using Avalonia.Styling;
+using Avalonia.Media;
+using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
-using Avalonia;
-using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Markup.Xaml;
+using UnrealLocresEditor.Utils;
 using UnrealLocresEditor.Views;
-// Removed "using UnrealLocresEditor.ViewModels;" because we don't use it anymore!
 
 namespace UnrealLocresEditor
 {
     public partial class App : Application
     {
+        // 1. DEFINE CUSTOM VARIANTS
+        public static readonly ThemeVariant CoolGray = new ThemeVariant("CoolGray", ThemeVariant.Dark);
+        // New: Explicitly define Purple so it doesn't get confused with "System Default"
+        public static readonly ThemeVariant Purple = new ThemeVariant("Purple", ThemeVariant.Dark);
+
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool AllocConsole();
 
@@ -25,32 +32,68 @@ namespace UnrealLocresEditor
         {
             AvaloniaXamlLoader.Load(this);
 
-            // Check for command-line arguments
+            var config = AppConfig.Instance;
+            SetTheme(config.ThemeKey);
+            SetAccent(Color.Parse(config.AccentColor));
+
             if (Environment.GetCommandLineArgs().Contains("-console"))
             {
-                if (AllocConsole())
-                {
-                    _consoleAllocated = true;
-                    Console.WriteLine("Console initialized due to -console argument.");
-                }
+                if (AllocConsole()) { _consoleAllocated = true; }
             }
 
-            // Exception handlers
             AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
             TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
+        }
+
+        public void SetTheme(string themeKey)
+        {
+            ThemeVariant variantToApply;
+
+            switch (themeKey)
+            {
+                case "Light":
+                    variantToApply = ThemeVariant.Light;
+                    break;
+                case "CoolGray":
+                    variantToApply = App.CoolGray;
+                    break;
+                case "Default":
+                case "Purple":
+                    // 2. MAP "Default" TO OUR PURPLE VARIANT
+                    variantToApply = App.Purple;
+                    break;
+                case "Dark":
+                default:
+                    variantToApply = ThemeVariant.Dark;
+                    break;
+            }
+
+            if (RequestedThemeVariant != variantToApply)
+            {
+                RequestedThemeVariant = variantToApply;
+            }
+        }
+
+        public void SetAccent(Color accentColor)
+        {
+            if (Resources.ContainsKey("SystemAccentColor"))
+            {
+                Resources["SystemAccentColor"] = accentColor;
+            }
+            else
+            {
+                Resources.Add("SystemAccentColor", accentColor);
+            }
         }
 
         public override void OnFrameworkInitializationCompleted()
         {
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                // FIX: Removed "{ DataContext = new MainViewModel() }"
-                // Now MainWindow keeps the DataContext it set for itself.
                 desktop.MainWindow = new MainWindow();
             }
             else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform)
             {
-                // FIX: Same here for mobile/browser support
                 singleViewPlatform.MainView = new MainWindow();
             }
 
@@ -65,38 +108,23 @@ namespace UnrealLocresEditor
         private void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             LogException(e.ExceptionObject as Exception, "Unhandled Exception");
-            Console.Error.WriteLine($"Unhandled Exception: {e.ExceptionObject}");
         }
 
         private void OnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs e)
         {
             LogException(e.Exception, "Unobserved Task Exception");
-            Console.Error.WriteLine($"Unobserved Task Exception: {e.Exception}");
             e.SetObserved();
         }
 
-        private void LogException(Exception ex, string exceptionType)
+        private void LogException(Exception ex, string type)
         {
             try
             {
-                string appDataPath = Environment.GetFolderPath(
-                    Environment.SpecialFolder.ApplicationData
-                );
-                string logDirectory = Path.Combine(appDataPath, "UnrealLocresEditor", "Logs");
-                Directory.CreateDirectory(logDirectory);
-
-                string logFilePath = Path.Combine(logDirectory, "crashlog.txt");
-                string logMessage =
-                    $"{DateTime.Now}: {exceptionType} - {ex?.Message}\n{ex?.StackTrace}\n\n";
-
-                File.AppendAllText(logFilePath, logMessage);
-
-                Console.Error.WriteLine(logMessage);
+                string path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "UnrealLocresEditor", "Logs", "crashlog.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.AppendAllText(path, $"{DateTime.Now}: {type} - {ex?.Message}\n{ex?.StackTrace}\n\n");
             }
-            catch
-            {
-                return;
-            }
+            catch { }
         }
     }
 }

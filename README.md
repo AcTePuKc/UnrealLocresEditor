@@ -1,41 +1,92 @@
-![A slightly rounded but rectangular logo with a dark background, including a crossed hammer and wrench with a vibrant, rainbow gradient. The text is positioned to the right of the tools, with "Unreal" in bold red, "Locres" in bold green, and "Editor" in bold blue, each stacked vertically.](/wiki/assets/img/ULE-banner-rounded.png)
+# LocresStudio 🤖
 
-A GUI tool to edit Unreal Engine localisation files using [UnrealLocres](https://github.com/akintos/UnrealLocres). \
-<br />
-[![Github Sponsors Badge](https://img.shields.io/badge/Github%20Sponsors-2f3742?style=for-the-badge&logo=github-sponsors&logoColor=c96198)](https://github.com/sponsors/snoozeds) [![Ko-fi Badge](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/snoozeds) [![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://patreon.com/snoozeds)
+![Logo displaying a crossed hammer and wrench on the left, with bold text 'LOCRES STUDIO' on the right. Dark blue background conveys a professional tone.](wiki/assets/img/LocresStudio.png)
 
+**The modern, tabbed editor for Unreal Engine localization files.**
 
-## Previews:
+LocresStudio is a specialized GUI tool for editing Unreal Engine `.locres` files. It is a "Power User" fork of [UnrealLocresEditor](https://github.com/snoozeds/UnrealLocresEditor), enhanced with multi-file support, Excel compatibility, and advanced accessibility features for translators.
+
+## 🚀 Key Features
+
+### 🎨 Customization & Accessibility (New!)
+
+* **🌍 RTL Support:** Native support for **Right-to-Left** languages (Arabic, Hebrew, Farsi). Toggling RTL instantly flips the grid layout and text alignment.
+* **🔤 Font Control:** Pick any installed system font (e.g., Arial, Noto Sans) and adjust the font size to ensure non-Latin scripts are readable.
+* **🌗 Dynamic Themes:** Switch instantly between **Classic Dark**, **Soft Light**, **Cool Gray**, and **Purple** themes without restarting the app.
+
+### ⚡ Workflow Enhancements
+
+* **📂 Multi-Tab Interface:** Open, edit, and switch between multiple localization files simultaneously. Tabs indicate which files have unsaved changes (`*`).
+* **📊 Excel Compatibility:**
+  * Import and Export **TSV** (Tab-Separated Values) and **CSV** files.
+  * **Smart Copy/Paste:** Select multiple rows in the grid and copy them directly into Excel or Google Sheets.
+* **💾 Safe Editing:** Uses a sandboxed temp-file system to prevent crashes or file-locking issues when the game is running in the background.
+* **🎮 Discord Rich Presence:** Shows which file you are currently editing and your line count directly on your Discord profile.
+
+### 🛠️ Technical Improvements
+
+* **🚀 Optimized Build:** Rebuilt on **.NET 8** with aggressive trimming. The executable is self-contained and **~70% smaller** (only ~26MB) while remaining fully portable.
+* **🔄 Legacy Support:** Full support for importing text files from [UE4LocalizationTool](https://github.com/amrshaheen61/UE4LocalizationsTool) (supports the `[~NAMES-INCLUDED~]` format).
+* **🐧 Linux Ready:** Improved architecture ensures better compatibility with Wine environments.
+
+## Previews
+
 | | | |
 |:-------------------------:|:-------------------------:|:-------------------------:|
-|<img width="1604" src="/wiki/assets/img/preview1.png">  |  <img width="1604" src="/wiki/assets/img/preview2.png">|<img width="1604" src="/wiki/assets/img/preview3.png">|
-|<img width="1604" src="/wiki/assets/img/preview4.png">  |  <img width="1604" src="/wiki/assets/img/preview5.png">|<img width="1604" src="/wiki/assets/img/preview6.png">|
+|<img alt='A software interface titled "Unreal Locres Studio" displays a table with columns labeled "key," "source," and "target." The table contains multiple rows of hexadecimal values paired with text strings, suggesting data entries for a project or game. The overall tone is technical, reflecting a programming or game development context.' width='1604' src='wiki/assets/img/preview1.png'>  |  <img alt='Screenshot of "Unreal Locres Studio" version 1.0 about window. Features a crossed hammer and wrench icon above buttons labeled Update Check, Licenses, and GitHub.' width='1604' src='wiki/assets/img/preview2.png'>|<img alt='Preferences window with "Appearance" tab open. Options for "Theme," set to "Classic Dark," and "Default column width" slider at 300 px. Save and Cancel buttons.' width='1604' src='wiki/assets/img/preview3.png'>|
+|<img alt='Settings window with dark theme, highlighting "Editor" tab. Auto-Save is on, set to 5 minutes. Auto-Update is off. Font family is Verdana. Save and Cancel buttons are visible.' width='1604' src='wiki/assets/img/preview4.png'>  |  <img alt='Screenshot of a software interface showing a dark-themed table with "source" and "target" columns. A dropdown menu titled "File" is open, displaying options like "Open lcores" and "Export to CSV." The text entries in the table appear brief and are partially cut off. The tone is analytical and focused on data management.' width='1604' src='wiki/assets/img/preview5.png'>| |
 
-## Installation Instructions (Windows x86/x64):
-1. Download the appropriate zip file (usually UnrealLocresEditor-x.x.x-win-x86.zip).
-2. Extract all files to a folder.
-3. Double-click on UnrealLocresEditor.Desktop.exe to run the application.
+## 📥 Installation
 
-Exported locres files will be saved in the following directory: \
-`UnrealLocresEditor/export/<date_time>/<name>.locres`
+### Windows (x64)
 
-## Installation Instructions (Linux x64 + Wine for UnrealLocres because it has no license):
+LocresStudio is **fully portable**. You do not need to install .NET.
 
-#### Prerequisites:
-- Wine must be installed.
-  - Ubuntu example: `sudo apt-get update && sudo apt-get install wine wine32`
-<hr>
+1. Go to the **[Releases Page](../../releases)**.
+2. Download the **zip** file (e.g., `LocresStudio-v1.0-win-x64.zip`).
+3. Extract the folder anywhere.
+4. Run **`LocresStudio.exe`**.
 
-1. Download the .tar file from Github Releases. This only supports Linux x64.
-2. Right click it in your file manager, click "Extract".
-3. Download [UnrealLocres](https://github.com/akintos/UnrealLocres/releases/latest), you will notice there is only an .exe file, but we will be using Wine.
-4. Place the .exe besides the files we extracted earlier.
-5. Navigate to the extracted files, right click, "Open in terminal". Type: `./UnrealLocresEditor.Dekstop`
-6. You should now see the application. Click Edit and then "Attempt wine prefix."
-7. If no errors occur, you should see a notification after a bit. Now, close Unreal Locres Editor and the terminal.
-8. Open a browser and go to the [wine-mono website](https://dl.winehq.org/wine/wine-mono/), click on the version that supports your Wine version. More than likely, this is the latest version, so scroll to the bottom. Next, download the .msi file inside the directory. (e.g `wine-mono-9.1.0-x86.msi`)
-9. Place this alongside the files we extracted earlier for now.
-10. Inside your file manager, in the extracted files' directory, right click and "Open terminal" again. You now want to type/paste: `realpath wineprefix`. Copy the output by selecting it and hitting ctrl+shift+c.
-11. Now type `WINEPREFIX=` and paste the output you just copied using ctrl+shift+v. Now type: `wine msiexec /i wine-mono-` hit the tab key, and the file name should auto complete. Now hit enter. Wait for it to finish.
-12. Once it has finished, run `./UnrealLocresEditor.Desktop` in the terminal again. You should now be able to save and export files!
-13. We no longer need the .msi file that we downloaded, so you can now safely delete it if you want to.
+> **Note:** Exported files are saved in the same folder inside the application directory.
+
+---
+
+### Linux (x64)
+
+LocresStudio runs natively on Linux (UI), but the backend tool (`UnrealLocres`) requires Wine.
+
+#### Prerequisites
+
+* **Wine** must be installed (e.g., `sudo apt-get install wine wine32`).
+
+#### Instructions
+
+1. Download the **linux-x64.zip** from Releases.
+2. Extract the files.
+3. Download the original **[UnrealLocres CLI tool](https://github.com/akintos/UnrealLocres/releases/latest)** (It is an `.exe`, but we will run it with Wine).
+4. Place `UnrealLocres.exe` inside your extracted folder (next to `UnrealLocresEditor.Desktop`).
+5. Open a terminal in that folder and run:
+
+    ```bash
+    ./UnrealLocresEditor.Desktop
+    ```
+
+6. **First Time Setup:**
+    * In the app, go to **Linux -> Attempt wine prefix**.
+    * Follow the on-screen instructions.
+
+---
+
+## ❤️ Credits & Acknowledgements
+
+LocresStudio is a fork of **UnrealLocresEditor**. While this version has evolved with new architecture and features, the foundation was built by **Snoozeds**.
+
+If you appreciate the original work that made this tool possible, please consider supporting the original creator:
+
+* [☕ Buy Snoozeds a Coffee (Ko-fi)](https://ko-fi.com/snoozeds)
+* [❤️ Support on Patreon](https://www.patreon.com/snoozeds)
+* [Original Repository](https://github.com/snoozeds/UnrealLocresEditor)
+
+---
+
+*Powered by [UnrealLocres](https://github.com/akintos/UnrealLocres) and [AvaloniaUI](https://avaloniaui.net/).*
