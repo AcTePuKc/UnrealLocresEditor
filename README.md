@@ -25,7 +25,7 @@ LocresStudio is a specialized GUI tool for editing Unreal Engine `.locres` files
 
 ### 🛠️ Technical Improvements
 
-* **🚀 Lightweight:** Optimized release build (~11MB download / ~40MB installed).
+* **🚀 Lightweight:** Optimized release build (~15MB download / ~40MB installed).
 * **🔄 Legacy Support:** Full support for importing text files from [UE4LocalizationTool](https://github.com/amrshaheen61/UE4LocalizationsTool) (supports the `[~NAMES-INCLUDED~]` format).
 * **🐧 Linux Ready:** Improved architecture ensures better compatibility with Wine environments.
 
